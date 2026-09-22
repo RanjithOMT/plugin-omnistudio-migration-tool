@@ -53,6 +53,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         const messages: Record<string, string> = {
           changeMessage: `The ${params?.[0]} ${params?.[1]} will be changed from ${params?.[2]} to ${params?.[3]}`,
           dataMapperNameStartsWithNumber: `DataMapper name '${params?.[0]}' starts with a number, suggested name: '${params?.[1]}'`,
+          objectPathSeparatorChange: `The Data Mapper object path '${params?.[0]}' will be updated to '${params?.[1]}' during migration to use the standard runtime's dot separator.`,
           duplicatedName: 'Duplicated name found',
           unexpectedError: 'An unexpected error occurred',
           componentMappingNotFound: `No registry mapping found for ${params?.[0]} component: ${params?.[1]}, using fallback cleaning`,
@@ -724,6 +725,166 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         expect(item.FormulaExpression).to.be.a('string');
         expect(item.OmniDataTransformationId).to.equal('parent-id');
       });
+    });
+  });
+
+  describe('Standard Data Model Assessment - Object Path Separator Conversion', () => {
+    it('reports colon->dot object-path conversions as infos without changing the status', async () => {
+      const mockDataRaptor = {
+        Id: 'dr_paths',
+        Name: 'PathDataRaptor',
+        Type: 'Extract',
+        InputType: 'JSON',
+        OutputType: 'JSON',
+        IsActive: true,
+      };
+
+      const mockItems = [
+        // Extract node definition: "Acc:info" -> "Acc.info" (every colon converts).
+        { Id: 'p1', Name: 'PathDataRaptor', InputObjectName: 'Case', OutputFieldName: 'Acc:info' },
+        // Reference keeps the trailing field-accessor colon: "Acc:info:id" -> "Acc.info:id".
+        // FilterValue "123" has no colon, so it is not reported.
+        {
+          Id: 'p2',
+          Name: 'PathDataRaptor',
+          InputFieldName: 'Acc:info:id',
+          OutputFieldName: 'IdValue',
+          FilterValue: '123',
+        },
+      ];
+      const dataRaptorItemsMap = new Map();
+      dataRaptorItemsMap.set('PathDataRaptor', mockItems);
+
+      const result = await (dataRaptorTool as any).processDataMappers(
+        mockDataRaptor,
+        new Set<string>(),
+        dataRaptorItemsMap,
+        []
+      );
+
+      // Automatic, safe conversion: surfaced as info while the status stays green with no warnings.
+      expect(result.migrationStatus).to.equal('Ready for migration');
+      expect(result.warnings).to.be.empty;
+      expect(result.infos).to.have.length(2);
+      expect(result.infos.some((info: string) => info.includes("'Acc:info'") && info.includes("'Acc.info'"))).to.be
+        .true;
+      expect(result.infos.some((info: string) => info.includes("'Acc:info:id'") && info.includes("'Acc.info:id'"))).to
+        .be.true;
+    });
+
+    it('reports nothing when the object paths are already colon-free', async () => {
+      const mockDataRaptor = {
+        Id: 'dr_nopaths',
+        Name: 'NoPathDataRaptor',
+        Type: 'Extract',
+        IsActive: true,
+      };
+      const mockItems = [
+        {
+          Id: 'n1',
+          Name: 'NoPathDataRaptor',
+          InputObjectName: 'Case',
+          OutputFieldName: 'Name',
+          InputFieldName: 'Id',
+        },
+      ];
+      const dataRaptorItemsMap = new Map();
+      dataRaptorItemsMap.set('NoPathDataRaptor', mockItems);
+
+      const result = await (dataRaptorTool as any).processDataMappers(
+        mockDataRaptor,
+        new Set<string>(),
+        dataRaptorItemsMap,
+        []
+      );
+
+      expect(result.infos).to.be.empty;
+      expect(result.migrationStatus).to.equal('Ready for migration');
+    });
+  });
+
+  // The colon->dot conversion is field-based and NOT gated by Data Mapper Type, so it applies to
+  // Transform, Extract/Turbo Extract, and Load alike. "Turbo Extract" is not a distinct Type -- it is
+  // an Extract with the IsProcessSuperBulk flag set -- so its items carry the same path fields as
+  // Extract. These tests assert the conversion holds per type on both the migration path
+  // (mapDataRaptorItemData) and the assessment path (processDataMappers infos), on the standard model.
+  describe('Standard Data Model - colon->dot conversion across Data Mapper types', () => {
+    it('converts Transform input/output node paths (migration + assessment)', async () => {
+      const bundle = { Id: 'dr_tf', Name: 'TransformDM', Type: 'Transform', IsActive: true };
+      const items = [
+        // Transform reads a JSON input node ("In:acct:name") and writes a JSON output node ("Out:acct").
+        { Id: 'tf1', Name: 'TransformDM', InputFieldName: 'In:acct:name', OutputFieldName: 'Out:acct' },
+      ];
+
+      // Migration converts: reference keeps the trailing field-accessor colon; node definition dots out.
+      const mig = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
+      expect(mig.InputFieldName).to.equal('In.acct:name');
+      expect(mig.OutputFieldName).to.equal('Out.acct');
+
+      // Assessment reports both conversions as infos, status unchanged.
+      const map = new Map();
+      map.set('TransformDM', items);
+      const res = await (dataRaptorTool as any).processDataMappers(bundle, new Set<string>(), map, []);
+      expect(res.type).to.equal('Transform');
+      expect(res.migrationStatus).to.equal('Ready for migration');
+      expect(res.warnings).to.be.empty;
+      expect(res.infos.some((i: string) => i.includes("'In:acct:name'") && i.includes("'In.acct:name'"))).to.be.true;
+      expect(res.infos.some((i: string) => i.includes("'Out:acct'") && i.includes("'Out.acct'"))).to.be.true;
+    });
+
+    it('converts Turbo Extract (Extract + IsProcessSuperBulk) node paths (migration + assessment)', async () => {
+      // Turbo Extract is an Extract with the IsProcessSuperBulk flag; the flag does not gate conversion.
+      const bundle = {
+        Id: 'dr_turbo',
+        Name: 'TurboExtractDM',
+        Type: 'Extract',
+        IsProcessSuperBulk: true,
+        IsActive: true,
+      };
+      const items = [
+        { Id: 'te1', Name: 'TurboExtractDM', InputObjectName: 'Case', OutputFieldName: 'Acc:info' },
+        { Id: 'te2', Name: 'TurboExtractDM', InputFieldName: 'Acc:info:id', OutputFieldName: 'IdValue' },
+      ];
+
+      const migNode = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
+      expect(migNode.InputObjectName).to.equal('Case'); // plain SObject, untouched
+      expect(migNode.OutputFieldName).to.equal('Acc.info'); // node definition dots out fully
+      const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
+      expect(migRef.InputFieldName).to.equal('Acc.info:id'); // reference keeps field-accessor colon
+
+      const map = new Map();
+      map.set('TurboExtractDM', items);
+      const res = await (dataRaptorTool as any).processDataMappers(bundle, new Set<string>(), map, []);
+      expect(res.migrationStatus).to.equal('Ready for migration');
+      expect(res.warnings).to.be.empty;
+      expect(res.infos.some((i: string) => i.includes("'Acc:info'") && i.includes("'Acc.info'"))).to.be.true;
+      expect(res.infos.some((i: string) => i.includes("'Acc:info:id'") && i.includes("'Acc.info:id'"))).to.be.true;
+    });
+
+    it('converts Load output object path and input reference (migration + assessment)', async () => {
+      const bundle = { Id: 'dr_load', Name: 'LoadDM', Type: 'Load', IsActive: true };
+      const items = [
+        // Load writes to an SObject/output object path and reads from a JSON input reference.
+        { Id: 'ld1', Name: 'LoadDM', OutputObjectName: 'Acc:AccountInfo', OutputFieldName: 'Name' },
+        { Id: 'ld2', Name: 'LoadDM', InputFieldName: 'src:node:field', OutputFieldName: 'Value' },
+      ];
+
+      const migObj = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
+      expect(migObj.OutputObjectName).to.equal('Acc.AccountInfo'); // object path dots out fully
+      expect(migObj.OutputFieldName).to.equal('Name'); // plain field, untouched
+      const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
+      expect(migRef.InputFieldName).to.equal('src.node:field'); // reference keeps field-accessor colon
+
+      const map = new Map();
+      map.set('LoadDM', items);
+      const res = await (dataRaptorTool as any).processDataMappers(bundle, new Set<string>(), map, []);
+      expect(res.type).to.equal('Load');
+      expect(res.migrationStatus).to.equal('Ready for migration');
+      expect(res.warnings).to.be.empty;
+      expect(res.infos.some((i: string) => i.includes("'Acc:AccountInfo'") && i.includes("'Acc.AccountInfo'"))).to.be
+        .true;
+      expect(res.infos.some((i: string) => i.includes("'src:node:field'") && i.includes("'src.node:field'"))).to.be
+        .true;
     });
   });
 

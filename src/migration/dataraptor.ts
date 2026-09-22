@@ -413,6 +413,11 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
     }
 
     const formulaChanges: oldNew[] = [];
+    // Migration implicitly converts the managed-package colon separator in Data Mapper object paths to
+    // the dot separator the standard runtime requires (e.g. "Acc:info" -> "Acc.info"). Surface those
+    // conversions in the assessment so the change is visible before migrating. It's an automatic, safe
+    // rewrite, so it stays informational and does not change the assessment status.
+    const infos: string[] = [];
     const drItems = dataRaptorItemsMap.get(drName);
     if (drItems) {
       for (const drItem of drItems) {
@@ -431,6 +436,10 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
             Logger.logVerbose(this.messages.getMessage('formulaSyntaxError', [formula]));
           }
         }
+
+        for (const change of this.collectObjectPathConversions(drItem)) {
+          infos.push(this.messages.getMessage('objectPathSeparatorChange', [change.old, change.new]));
+        }
       }
     }
     const dataRaptorAssessmentInfo: DataRaptorAssessmentInfo = {
@@ -439,7 +448,7 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
       id: dataRaptor['Id'],
       type: dataRaptor[this.getBundleFieldKey('Type__c')] || '',
       formulaChanges: formulaChanges,
-      infos: [],
+      infos: infos,
       apexDependencies: apexDependencies,
       warnings: warnings,
       errors: [],
@@ -611,6 +620,12 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
     return mappedObject;
   }
 
+  // The field groups below are keyed by *source* field name (the keys of DRMapItemMappings). Migration
+  // works on the already-mapped record, so it resolves each to its target field via DRMapItemMappings;
+  // assessment works on the raw queried record, so it resolves each via getItemFieldKey(). Keeping a
+  // single source-keyed list ensures the conversions reported during assessment match what migration
+  // actually applies.
+
   /**
    * Object/node-path fields whose value is a *definition* of a node or object path. Here every colon is
    * a hierarchy separator, so all of them convert to dots (":" -> ".").
@@ -622,10 +637,10 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
    * location of a formula result and follows the same node-path convention.
    */
   private static readonly OBJECT_PATH_FIELDS: string[] = [
-    DRMapItemMappings.InterfaceObjectName__c, // InputObjectName   (input/extraction object, e.g. SObject "Case")
-    DRMapItemMappings.DomainObjectAPIName__c, // OutputObjectName  (Load/Transform output object)
-    DRMapItemMappings.DomainObjectFieldAPIName__c, // OutputFieldName  (Extract Object path / output node, e.g. "Acc:info")
-    DRMapItemMappings.FormulaResultPath__c, // FormulaResultPath (JSON output path where a formula result is written)
+    'InterfaceObjectName__c', // InputObjectName   (input/extraction object, e.g. SObject "Case")
+    'DomainObjectAPIName__c', // OutputObjectName  (Load/Transform output object)
+    'DomainObjectFieldAPIName__c', // OutputFieldName  (Extract Object path / output node, e.g. "Acc:info")
+    'FormulaResultPath__c', // FormulaResultPath (JSON output path where a formula result is written)
   ];
 
   /**
@@ -638,10 +653,10 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
    * untouched (bare node "Acc", field "id").
    */
   private static readonly REFERENCE_PATH_FIELDS: string[] = [
-    DRMapItemMappings.InterfaceFieldAPIName__c, // InputFieldName          (mapping source path, e.g. "Acc:test:id")
-    DRMapItemMappings.LookupDomainObjectName__c, // LookupObjectName
-    DRMapItemMappings.LookupDomainObjectFieldName__c, // LookupByFieldName
-    DRMapItemMappings.LookupDomainObjectRequestedFieldName__c, // LookupReturnedFieldName
+    'InterfaceFieldAPIName__c', // InputFieldName          (mapping source path, e.g. "Acc:test:id")
+    'LookupDomainObjectName__c', // LookupObjectName
+    'LookupDomainObjectFieldName__c', // LookupByFieldName
+    'LookupDomainObjectRequestedFieldName__c', // LookupReturnedFieldName
   ];
 
   /**
@@ -658,8 +673,8 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
    * same shape.
    */
   private static readonly EXPRESSION_REFERENCE_FIELDS: string[] = [
-    DRMapItemMappings.Formula__c, // FormulaExpression
-    DRMapItemMappings.FilterValue__c, // FilterValue (may reference an earlier extract's output node)
+    'Formula__c', // FormulaExpression
+    'FilterValue__c', // FilterValue (may reference an earlier extract's output node)
   ];
 
   /**
@@ -677,7 +692,8 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
    */
   private convertObjectPathSeparators(mappedObject: AnyJson): void {
     // 1) Object/node-path fields: a colon is always a hierarchy separator here, so convert every one.
-    for (const fieldKey of DataRaptorMigrationTool.OBJECT_PATH_FIELDS) {
+    for (const sourceField of DataRaptorMigrationTool.OBJECT_PATH_FIELDS) {
+      const fieldKey = DRMapItemMappings[sourceField];
       const value = mappedObject[fieldKey];
 
       if (typeof value === 'string' && value.includes(':')) {
@@ -689,7 +705,8 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
 
     // 2) Reference fields ("nodePath:field"): convert the node-path portion but keep the final
     //    field-accessor colon, so "Acc:test:id" -> "Acc.test:id" (not "Acc.test.id").
-    for (const fieldKey of DataRaptorMigrationTool.REFERENCE_PATH_FIELDS) {
+    for (const sourceField of DataRaptorMigrationTool.REFERENCE_PATH_FIELDS) {
+      const fieldKey = DRMapItemMappings[sourceField];
       const value = mappedObject[fieldKey];
 
       if (typeof value === 'string' && value.includes(':')) {
@@ -705,7 +722,8 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
     //    alias:node[:field] references (e.g. "Acc:test:id" -> "Acc.test:id"). Constants are stored in
     //    quotes ("12:30", "Draft:Pending"), so quoted values -- including quoted colons -- are left
     //    untouched and we don't corrupt free text or data.
-    for (const fieldKey of DataRaptorMigrationTool.EXPRESSION_REFERENCE_FIELDS) {
+    for (const sourceField of DataRaptorMigrationTool.EXPRESSION_REFERENCE_FIELDS) {
+      const fieldKey = DRMapItemMappings[sourceField];
       const value = mappedObject[fieldKey];
 
       if (typeof value === 'string' && value.includes(':')) {
@@ -716,6 +734,53 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
         }
       }
     }
+  }
+
+  /**
+   * Detects the colon->dot path conversions that migration will apply to a Data Mapper item, so the
+   * assessment can surface them. This mirrors convertObjectPathSeparators but reads the raw (queried)
+   * item fields via getItemFieldKey() and returns the old/new pairs instead of mutating.
+   *
+   * The formula expression is intentionally excluded here: its transformation is already surfaced in the
+   * assessment's dedicated formula-changes column, so including it in the path-change summary would show
+   * the same field in two places with two different rewrites. Every other path-bearing field
+   * (object/node paths, reference paths, and FilterValue node references) is reported.
+   *
+   * @param drItem The raw DRMapItem/OmniDataTransformItem record.
+   * @returns The path fields that will change, as { old, new } pairs; empty when nothing converts.
+   */
+  private collectObjectPathConversions(drItem: AnyJson): oldNew[] {
+    const changes: oldNew[] = [];
+
+    // Object/node-path fields: every colon is a hierarchy separator, so convert all.
+    for (const sourceField of DataRaptorMigrationTool.OBJECT_PATH_FIELDS) {
+      const value = drItem[this.getItemFieldKey(sourceField)];
+      if (typeof value === 'string' && value.includes(':')) {
+        changes.push({ old: value, new: value.replace(/:/g, '.') });
+      }
+    }
+
+    // Reference fields ("nodePath:field"): convert the node path, keep the trailing field-accessor colon.
+    for (const sourceField of DataRaptorMigrationTool.REFERENCE_PATH_FIELDS) {
+      const value = drItem[this.getItemFieldKey(sourceField)];
+      if (typeof value === 'string' && value.includes(':')) {
+        const convertedValue = this.convertNodePathKeepingFieldAccessor(value);
+        if (convertedValue !== value) {
+          changes.push({ old: value, new: convertedValue });
+        }
+      }
+    }
+
+    // FilterValue may reference an earlier extract's output node; convert only unquoted references.
+    const filterValue = drItem[this.getItemFieldKey('FilterValue__c')];
+    if (typeof filterValue === 'string' && filterValue.includes(':')) {
+      const convertedValue = this.convertColonPathsInExpression(filterValue);
+      if (convertedValue !== filterValue) {
+        changes.push({ old: filterValue, new: convertedValue });
+      }
+    }
+
+    return changes;
   }
 
   /**
