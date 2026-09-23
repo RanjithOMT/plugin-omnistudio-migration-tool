@@ -278,7 +278,11 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         GlobalKey: 'test-item-key',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-transform-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(
+        mockDataRaptorItemRecord,
+        'parent-transform-id',
+        true
+      );
 
       // Standard Data Model should preserve field structure
       expect(result.Name).to.equal('CustomerNameMapping');
@@ -312,7 +316,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         OutputFieldName: 'TestOutput',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       // Formula structure should be preserved for further processing
       expect(result.FormulaExpression).to.be.a('string');
@@ -330,7 +334,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         FormulaExpression: null,
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       // Item name should be cleaned
       expect(result.Name).to.equal('ItemWithSpecialChars');
@@ -348,7 +352,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         OutputFieldName: 'AccountId',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       // Colon must become a dot so the Data Mapper works on the standard (Core Designer) runtime
       expect(result.InputObjectName).to.equal('Acc.AccountInfo');
@@ -371,7 +375,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         InputObjectName: 'Case',
         OutputFieldName: 'Acc:info',
       };
-      const stepResult = (dataRaptorTool as any).mapDataRaptorItemData(extractStepRow, 'parent-id');
+      const stepResult = (dataRaptorTool as any).mapDataRaptorItemData(extractStepRow, 'parent-id', true);
       expect(stepResult.InputObjectName).to.equal('Case'); // plain SObject name, no separator
       expect(stepResult.OutputFieldName).to.equal('Acc.info'); // node path converts every colon
 
@@ -383,7 +387,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         OutputFieldName: 'IdValue',
         FilterValue: '123',
       };
-      const mapResult = (dataRaptorTool as any).mapDataRaptorItemData(mappingRow, 'parent-id');
+      const mapResult = (dataRaptorTool as any).mapDataRaptorItemData(mappingRow, 'parent-id', true);
       // Reference keeps the final field-accessor colon: node "Acc.info", field "id".
       expect(mapResult.InputFieldName).to.equal('Acc.info:id');
       expect(mapResult.OutputFieldName).to.equal('IdValue'); // plain target field, no separator
@@ -399,7 +403,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         Name: 'LookupExtract',
         OutputFieldName: 'Acc:test',
       };
-      const stepResult = (dataRaptorTool as any).mapDataRaptorItemData(extractStepRow, 'parent-id');
+      const stepResult = (dataRaptorTool as any).mapDataRaptorItemData(extractStepRow, 'parent-id', true);
       expect(stepResult.OutputFieldName).to.equal('Acc.test'); // node definition dots out fully
 
       const lookupRow = {
@@ -410,7 +414,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         LookupByFieldName: 'Acc:test:id',
         LookupReturnedFieldName: 'Acc:test:id',
       };
-      const lookupResult = (dataRaptorTool as any).mapDataRaptorItemData(lookupRow, 'parent-id');
+      const lookupResult = (dataRaptorTool as any).mapDataRaptorItemData(lookupRow, 'parent-id', true);
       expect(lookupResult.InputFieldName).to.equal('Acc.test:id');
       expect(lookupResult.LookupObjectName).to.equal('Acc.test:id');
       expect(lookupResult.LookupByFieldName).to.equal('Acc.test:id');
@@ -425,7 +429,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         Name: 'SingleColon',
         InputFieldName: 'Acc:id',
       };
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mappingRow, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mappingRow, 'parent-id', true);
       expect(result.InputFieldName).to.equal('Acc:id');
     });
 
@@ -435,7 +439,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         Name: 'MultiLevelRef',
         InputFieldName: 'Acc:a:b:id',
       };
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mappingRow, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mappingRow, 'parent-id', true);
       expect(result.InputFieldName).to.equal('Acc.a.b:id');
     });
 
@@ -450,7 +454,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         LookupByFieldName: 'a:b:c:d',
         LookupReturnedFieldName: 'a:b:c:d',
       };
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(lookupRow, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(lookupRow, 'parent-id', true);
       expect(result.InputFieldName).to.equal('a.b.c:d');
       expect(result.LookupObjectName).to.equal('a.b.c:d');
       expect(result.LookupByFieldName).to.equal('a.b.c:d');
@@ -465,7 +469,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         OutputFieldName: 'Name',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       expect(result.OutputObjectName).to.equal('Acc.AccountInfo');
       // Plain field-name field is untouched
@@ -480,7 +484,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         FilterValue: '12:30',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       // Colons inside quoted string literals and in value fields must be preserved
       expect(result.FormulaExpression).to.equal('IF(x, "a:b", "c:d")');
@@ -497,7 +501,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         FormulaExpression: 'IF(Acc:info:active, %Acc:info:id%, "n/a at 12:30")',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       expect(result.FormulaExpression).to.equal('IF(Acc.info:active, %Acc.info:id%, "n/a at 12:30")');
     });
@@ -512,7 +516,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         FilterValue: 'Acc:test:id',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       expect(result.FilterValue).to.equal('Acc.test:id');
     });
@@ -522,20 +526,23 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
       // survive verbatim, even a quoted colon like a time "12:30" or a word "Draft:Pending".
       const timeRow = (dataRaptorTool as any).mapDataRaptorItemData(
         { Id: 'dri-filter-time', Name: 'FilterTime', FilterValue: '"12:30"' },
-        'parent-id'
+        'parent-id',
+        true
       );
       expect(timeRow.FilterValue).to.equal('"12:30"');
 
       const wordRow = (dataRaptorTool as any).mapDataRaptorItemData(
         { Id: 'dri-filter-word', Name: 'FilterWord', FilterValue: '"Draft:Pending"' },
-        'parent-id'
+        'parent-id',
+        true
       );
       expect(wordRow.FilterValue).to.equal('"Draft:Pending"');
 
       // A plain id constant has no colon, so it is unaffected regardless of quoting.
       const idRow = (dataRaptorTool as any).mapDataRaptorItemData(
         { Id: 'dri-filter-id', Name: 'FilterId', FilterValue: '123' },
-        'parent-id'
+        'parent-id',
+        true
       );
       expect(idRow.FilterValue).to.equal('123');
     });
@@ -547,7 +554,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         FormulaResultPath: 'Acc:info:computed',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       expect(result.FormulaResultPath).to.equal('Acc.info.computed');
     });
@@ -559,7 +566,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         InputObjectName: 'Acc:AccountInfo:Contacts',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       expect(result.InputObjectName).to.equal('Acc.AccountInfo.Contacts');
     });
@@ -571,7 +578,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         InputObjectName: 'Acc.AccountInfo',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       expect(result.InputObjectName).to.equal('Acc.AccountInfo');
     });
@@ -583,7 +590,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         InputFieldName: 'Id',
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       expect(result.InputObjectName).to.be.undefined;
       expect(result.InputFieldName).to.equal('Id');
@@ -611,7 +618,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
       };
       /* eslint-enable camelcase */
 
-      const result = (customModelTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (customModelTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       // Both the object path and its mapping reference convert on the managed data model too. The
       // object path dots out fully; the reference keeps its trailing field-accessor colon.
@@ -669,7 +676,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
       // Test migration transformation
       const migrationResult = (dataRaptorTool as any).mapDataRaptorRecord(mockDataRaptor);
       const itemResults = mockItems.map((item) =>
-        (dataRaptorTool as any).mapDataRaptorItemData(item, migrationResult.attributes.referenceId)
+        (dataRaptorTool as any).mapDataRaptorItemData(item, migrationResult.attributes.referenceId, true)
       );
 
       // Migration should preserve structure and clean names
@@ -713,7 +720,9 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
       ];
 
       const migrationResult = (dataRaptorTool as any).mapDataRaptorRecord(mockDataRaptor);
-      const itemResults = mockItems.map((item) => (dataRaptorTool as any).mapDataRaptorItemData(item, 'parent-id'));
+      const itemResults = mockItems.map((item) =>
+        (dataRaptorTool as any).mapDataRaptorItemData(item, 'parent-id', true)
+      );
 
       // All results should have proper structure for registry processing
       expect(migrationResult.Name).to.equal('RegistryTestDataRaptor');
@@ -803,65 +812,60 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
     });
   });
 
-  // The colon->dot conversion is field-based and NOT gated by Data Mapper Type, so it applies to
-  // Transform, Extract/Turbo Extract, and Load alike. "Turbo Extract" is not a distinct Type -- it is
-  // an Extract with the IsProcessSuperBulk flag set -- so its items carry the same path fields as
-  // Extract. These tests assert the conversion holds per type on both the migration path
-  // (mapDataRaptorItemData) and the assessment path (processDataMappers infos), on the standard model.
-  describe('Standard Data Model - colon->dot conversion across Data Mapper types', () => {
-    it('converts Transform input/output node paths (migration + assessment)', async () => {
+  // The colon->dot conversion applies ONLY to Extract Data Mappers -- the alias:node path convention
+  // ("Acc:info") is an Extract feature. Load and Transform do not use it and may legitimately hold a
+  // colon (e.g. a filter constant), so their paths are left untouched on both the migration path
+  // (mapDataRaptorItemData) and the assessment path (processDataMappers infos). "Turbo Extract" is its
+  // own distinct Type ('Turbo Extract', not 'Extract'), so it is NOT gated in and is left untouched too.
+  // These tests assert that per-type gating on the standard model.
+  describe('Standard Data Model - colon->dot conversion is Extract-only', () => {
+    it('leaves Transform input/output node paths unchanged (migration + assessment)', async () => {
       const bundle = { Id: 'dr_tf', Name: 'TransformDM', Type: 'Transform', IsActive: true };
       const items = [
         // Transform reads a JSON input node ("In:acct:name") and writes a JSON output node ("Out:acct").
         { Id: 'tf1', Name: 'TransformDM', InputFieldName: 'In:acct:name', OutputFieldName: 'Out:acct' },
       ];
 
-      // Migration converts: reference keeps the trailing field-accessor colon; node definition dots out.
-      const mig = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
-      expect(mig.InputFieldName).to.equal('In.acct:name');
-      expect(mig.OutputFieldName).to.equal('Out.acct');
+      // Migration does NOT convert for a non-Extract: colons are preserved verbatim.
+      const mig = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+      expect(mig.InputFieldName).to.equal('In:acct:name');
+      expect(mig.OutputFieldName).to.equal('Out:acct');
 
-      // Assessment reports both conversions as infos, status unchanged.
+      // Assessment reports no path-conversion infos for a Transform; status unchanged.
       const map = new Map();
       map.set('TransformDM', items);
       const res = await (dataRaptorTool as any).processDataMappers(bundle, new Set<string>(), map, []);
       expect(res.type).to.equal('Transform');
       expect(res.migrationStatus).to.equal('Ready for migration');
       expect(res.warnings).to.be.empty;
-      expect(res.infos.some((i: string) => i.includes("'In:acct:name'") && i.includes("'In.acct:name'"))).to.be.true;
-      expect(res.infos.some((i: string) => i.includes("'Out:acct'") && i.includes("'Out.acct'"))).to.be.true;
+      expect(res.infos.some((i: string) => i.includes("'In:acct:name'"))).to.be.false;
+      expect(res.infos.some((i: string) => i.includes("'Out:acct'"))).to.be.false;
     });
 
-    it('converts Turbo Extract (Extract + IsProcessSuperBulk) node paths (migration + assessment)', async () => {
-      // Turbo Extract is an Extract with the IsProcessSuperBulk flag; the flag does not gate conversion.
-      const bundle = {
-        Id: 'dr_turbo',
-        Name: 'TurboExtractDM',
-        Type: 'Extract',
-        IsProcessSuperBulk: true,
-        IsActive: true,
-      };
+    it('leaves Turbo Extract node paths unchanged (migration + assessment)', async () => {
+      // "Turbo Extract" is its own distinct Type, NOT an Extract, so the conversion does not run.
+      const bundle = { Id: 'dr_turbo', Name: 'TurboExtractDM', Type: 'Turbo Extract', IsActive: true };
       const items = [
         { Id: 'te1', Name: 'TurboExtractDM', InputObjectName: 'Case', OutputFieldName: 'Acc:info' },
         { Id: 'te2', Name: 'TurboExtractDM', InputFieldName: 'Acc:info:id', OutputFieldName: 'IdValue' },
       ];
 
-      const migNode = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
-      expect(migNode.InputObjectName).to.equal('Case'); // plain SObject, untouched
-      expect(migNode.OutputFieldName).to.equal('Acc.info'); // node definition dots out fully
-      const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
-      expect(migRef.InputFieldName).to.equal('Acc.info:id'); // reference keeps field-accessor colon
+      const migNode = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+      expect(migNode.InputObjectName).to.equal('Case');
+      expect(migNode.OutputFieldName).to.equal('Acc:info'); // colon preserved verbatim
+      const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent', false);
+      expect(migRef.InputFieldName).to.equal('Acc:info:id'); // colon preserved verbatim
 
       const map = new Map();
       map.set('TurboExtractDM', items);
       const res = await (dataRaptorTool as any).processDataMappers(bundle, new Set<string>(), map, []);
       expect(res.migrationStatus).to.equal('Ready for migration');
       expect(res.warnings).to.be.empty;
-      expect(res.infos.some((i: string) => i.includes("'Acc:info'") && i.includes("'Acc.info'"))).to.be.true;
-      expect(res.infos.some((i: string) => i.includes("'Acc:info:id'") && i.includes("'Acc.info:id'"))).to.be.true;
+      expect(res.infos.some((i: string) => i.includes("'Acc:info'"))).to.be.false;
+      expect(res.infos.some((i: string) => i.includes("'Acc:info:id'"))).to.be.false;
     });
 
-    it('converts Load output object path and input reference (migration + assessment)', async () => {
+    it('leaves Load output object path and input reference unchanged (migration + assessment)', async () => {
       const bundle = { Id: 'dr_load', Name: 'LoadDM', Type: 'Load', IsActive: true };
       const items = [
         // Load writes to an SObject/output object path and reads from a JSON input reference.
@@ -869,22 +873,22 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         { Id: 'ld2', Name: 'LoadDM', InputFieldName: 'src:node:field', OutputFieldName: 'Value' },
       ];
 
-      const migObj = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
-      expect(migObj.OutputObjectName).to.equal('Acc.AccountInfo'); // object path dots out fully
-      expect(migObj.OutputFieldName).to.equal('Name'); // plain field, untouched
-      const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
-      expect(migRef.InputFieldName).to.equal('src.node:field'); // reference keeps field-accessor colon
+      // Migration does NOT convert for a non-Extract: colons are preserved verbatim.
+      const migObj = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+      expect(migObj.OutputObjectName).to.equal('Acc:AccountInfo');
+      expect(migObj.OutputFieldName).to.equal('Name'); // plain field, no separator
+      const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent', false);
+      expect(migRef.InputFieldName).to.equal('src:node:field');
 
+      // Assessment reports no path-conversion infos for a Load; status unchanged.
       const map = new Map();
       map.set('LoadDM', items);
       const res = await (dataRaptorTool as any).processDataMappers(bundle, new Set<string>(), map, []);
       expect(res.type).to.equal('Load');
       expect(res.migrationStatus).to.equal('Ready for migration');
       expect(res.warnings).to.be.empty;
-      expect(res.infos.some((i: string) => i.includes("'Acc:AccountInfo'") && i.includes("'Acc.AccountInfo'"))).to.be
-        .true;
-      expect(res.infos.some((i: string) => i.includes("'src:node:field'") && i.includes("'src.node:field'"))).to.be
-        .true;
+      expect(res.infos.some((i: string) => i.includes("'Acc:AccountInfo'"))).to.be.false;
+      expect(res.infos.some((i: string) => i.includes("'src:node:field'"))).to.be.false;
     });
   });
 
@@ -916,7 +920,7 @@ describe('DataRaptor Standard Data Model (Metadata API Disabled) - Assessment an
         FormulaExpression: null,
       };
 
-      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id');
+      const result = (dataRaptorTool as any).mapDataRaptorItemData(mockDataRaptorItemRecord, 'parent-id', true);
 
       // Should handle null formula gracefully
       expect(result.Name).to.equal('SimpleMapping');

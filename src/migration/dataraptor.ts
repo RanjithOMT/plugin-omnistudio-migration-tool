@@ -228,7 +228,12 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
         const dataMapperName = transformedDataRaptor[DRBundleMappings.Name];
         duplicatedNames.add(dataMapperName.toLowerCase());
 
-        const items = await this.getItemsForDataRaptor(dataRaptorItemsData, name, drUploadResponse.id);
+        const items = await this.getItemsForDataRaptor(
+          dataRaptorItemsData,
+          name,
+          drUploadResponse.id,
+          DataRaptorMigrationTool.isExtractDataRaptor(dr[this.getBundleFieldKey('Type__c')])
+        );
         drUploadResponse.newName = dataMapperName;
 
         // Move the items
@@ -418,6 +423,9 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
     // conversions in the assessment so the change is visible before migrating. It's an automatic, safe
     // rewrite, so it stays informational and does not change the assessment status.
     const infos: string[] = [];
+    // The colon->dot path conversion only applies to Extract Data Mappers (see isExtractDataRaptor);
+    // Load/Transform paths are left as-is, so don't surface path changes for them either.
+    const isExtract = DataRaptorMigrationTool.isExtractDataRaptor(dataRaptor[this.getBundleFieldKey('Type__c')]);
     const drItems = dataRaptorItemsMap.get(drName);
     if (drItems) {
       for (const drItem of drItems) {
@@ -437,8 +445,10 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
           }
         }
 
-        for (const change of this.collectObjectPathConversions(drItem)) {
-          infos.push(this.messages.getMessage('objectPathSeparatorChange', [change.old, change.new]));
+        if (isExtract) {
+          for (const change of this.collectObjectPathConversions(drItem)) {
+            infos.push(this.messages.getMessage('objectPathSeparatorChange', [change.old, change.new]));
+          }
         }
       }
     }
@@ -512,7 +522,8 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
   private async getItemsForDataRaptor(
     dataRaptorItems: AnyJson[],
     drName: string,
-    drId: string
+    drId: string,
+    isExtract: boolean
   ): Promise<TransformData> {
     //Query all Elements
     const mappedRecords = [];
@@ -522,7 +533,7 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
       const recordId = drItem['Id'];
       // const itemParentId = drItem[nsPrefix + 'OmniDataTransformationId__c']
       if (drItem['Name'] === drName) {
-        mappedRecords.push(this.mapDataRaptorItemData(drItem, drId));
+        mappedRecords.push(this.mapDataRaptorItemData(drItem, drId, isExtract));
       }
 
       // Create a map of the original records
@@ -575,11 +586,25 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
   }
 
   /**
+   * Whether a Data Mapper is an Extract -- the only type where the managed-package colon path
+   * separator ("Acc:info") is used and therefore must be converted to the dot the standard runtime
+   * requires. Load and Transform Data Mappers do not use the alias:node path convention, and their
+   * fields may legitimately contain a colon (e.g. a filter constant "12:30"), so the conversion must
+   * not touch them. Accepts the raw DRBundle Type__c: a null/empty type and the legacy "Extract (JSON)"
+   * both migrate to Extract (see the type normalization in migrateAll).
+   */
+  private static isExtractDataRaptor(rawType: unknown): boolean {
+    return rawType == null || rawType === '' || rawType === 'Extract' || rawType === 'Extract (JSON)';
+  }
+
+  /**
    * Maps an individual DRMapItem__c into an OmniDataTransformId record
    * @param dataRaptorItemRecord
+   * @param omniDataTransformationId
+   * @param isExtract Whether the parent Data Mapper is an Extract; only Extracts get colon->dot path conversion.
    * @returns
    */
-  private mapDataRaptorItemData(dataRaptorItemRecord: AnyJson, omniDataTransformationId: string) {
+  private mapDataRaptorItemData(dataRaptorItemRecord: AnyJson, omniDataTransformationId: string, isExtract: boolean) {
     // Transformed object
     let mappedObject = {};
 
@@ -608,8 +633,11 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
     // "Acc:test:id" in InputFieldName), but the standard (Core Designer) runtime expects a dot. Node
     // definitions convert every colon ("Acc:test" -> "Acc.test"); references keep the trailing
     // field-accessor colon ("Acc:test:id" -> "Acc.test:id"). Convert so the node definition and every
-    // reference to it stay in sync on the standard runtime.
-    this.convertObjectPathSeparators(mappedObject);
+    // reference to it stay in sync on the standard runtime. This alias:node convention only exists on
+    // Extract Data Mappers, so Load/Transform items are left untouched.
+    if (isExtract) {
+      this.convertObjectPathSeparators(mappedObject);
+    }
 
     // BATCH framework requires that each record has an "attributes" property
     mappedObject['attributes'] = {

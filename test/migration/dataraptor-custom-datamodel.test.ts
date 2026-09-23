@@ -19,12 +19,12 @@ import { OmnistudioOrgDetails } from '../../src/utils/orgUtils';
  * Counterpart to the standard-data-model suite. On the custom data model the org is on the managed
  * package (omniStudioOrgPermissionEnabled = false), so DRMapItem records are keyed by *namespaced
  * source* field names (e.g. omnistudio__InterfaceFieldAPIName__c) rather than the standard target names.
- * These tests confirm the colon->dot conversion applies across Data Mapper types (Transform, Turbo
- * Extract, Load) on both the migration path (mapDataRaptorItemData) and the assessment path
- * (processDataMappers infos) for the custom model as well.
+ * These tests confirm the colon->dot conversion is Extract-only on the custom model too: it runs for
+ * Extract Data Mappers on both the migration path (mapDataRaptorItemData) and the assessment path
+ * (processDataMappers infos), and is skipped for Load and Transform.
  *
- * The conversion is field-based and NOT gated by Type; "Turbo Extract" is an Extract with the
- * IsProcessSuperBulk flag, so it carries the same item path fields as Extract.
+ * The conversion is gated by Type === 'Extract'; "Turbo Extract" is its own distinct Type
+ * ('Turbo Extract', not 'Extract'), so it is NOT gated in and its colon paths are left untouched.
  */
 describe('DataRaptor Custom Data Model - colon->dot object-path conversion', () => {
   const NS = 'omnistudio';
@@ -79,73 +79,69 @@ describe('DataRaptor Custom Data Model - colon->dot object-path conversion', () 
     ...extra,
   });
 
-  it('converts Transform input/output node paths (migration + assessment)', async () => {
+  it('leaves Transform input/output node paths unchanged (migration + assessment)', async () => {
     const items = [item('tf1', { InterfaceFieldAPIName__c: 'In:acct:name', DomainObjectFieldAPIName__c: 'Out:acct' })];
 
-    // Migration: custom-model records map to target keys, then the conversion runs on the mapped object.
-    const mig = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
-    expect(mig.InputFieldName).to.equal('In.acct:name'); // reference keeps field-accessor colon
-    expect(mig.OutputFieldName).to.equal('Out.acct'); // node definition dots out fully
+    // Migration does NOT convert for a non-Extract: colons are preserved verbatim.
+    const mig = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+    expect(mig.InputFieldName).to.equal('In:acct:name');
+    expect(mig.OutputFieldName).to.equal('Out:acct');
 
-    // Assessment: detection reads the raw namespaced fields and reports the conversions as infos.
+    // Assessment reports no path-conversion infos for a Transform.
     const map = new Map();
     map.set('CustomTypeDM', items);
     const res = await (dataRaptorTool as any).processDataMappers(bundle('Transform'), new Set<string>(), map, []);
     expect(res.type).to.equal('Transform');
     expect(res.migrationStatus).to.equal('Ready for migration');
     expect(res.warnings).to.be.empty;
-    expect(res.infos.some((i: string) => i.includes("'In:acct:name'") && i.includes("'In.acct:name'"))).to.be.true;
-    expect(res.infos.some((i: string) => i.includes("'Out:acct'") && i.includes("'Out.acct'"))).to.be.true;
+    expect(res.infos.some((i: string) => i.includes("'In:acct:name'"))).to.be.false;
+    expect(res.infos.some((i: string) => i.includes("'Out:acct'"))).to.be.false;
   });
 
-  it('converts Turbo Extract (Extract + IsProcessSuperBulk) node paths (migration + assessment)', async () => {
+  it('leaves Turbo Extract node paths unchanged (migration + assessment)', async () => {
     const items = [
       item('te1', { InterfaceObjectName__c: 'Case', DomainObjectFieldAPIName__c: 'Acc:info' }),
       item('te2', { InterfaceFieldAPIName__c: 'Acc:info:id', DomainObjectFieldAPIName__c: 'IdValue' }),
     ];
 
-    const migNode = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
-    expect(migNode.InputObjectName).to.equal('Case'); // plain SObject, untouched
-    expect(migNode.OutputFieldName).to.equal('Acc.info'); // node definition dots out fully
-    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
-    expect(migRef.InputFieldName).to.equal('Acc.info:id'); // reference keeps field-accessor colon
+    // "Turbo Extract" is its own distinct Type, NOT an Extract, so the conversion does not run.
+    const migNode = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+    expect(migNode.InputObjectName).to.equal('Case');
+    expect(migNode.OutputFieldName).to.equal('Acc:info'); // colon preserved verbatim
+    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent', false);
+    expect(migRef.InputFieldName).to.equal('Acc:info:id'); // colon preserved verbatim
 
     const map = new Map();
     map.set('CustomTypeDM', items);
-    // Turbo Extract = Extract with the IsProcessSuperBulk flag set; the flag does not gate conversion.
-    const res = await (dataRaptorTool as any).processDataMappers(
-      bundle('Extract', { [`${NS}__IsProcessSuperBulk__c`]: true }),
-      new Set<string>(),
-      map,
-      []
-    );
+    const res = await (dataRaptorTool as any).processDataMappers(bundle('Turbo Extract'), new Set<string>(), map, []);
     expect(res.migrationStatus).to.equal('Ready for migration');
     expect(res.warnings).to.be.empty;
-    expect(res.infos.some((i: string) => i.includes("'Acc:info'") && i.includes("'Acc.info'"))).to.be.true;
-    expect(res.infos.some((i: string) => i.includes("'Acc:info:id'") && i.includes("'Acc.info:id'"))).to.be.true;
+    expect(res.infos.some((i: string) => i.includes("'Acc:info'"))).to.be.false;
+    expect(res.infos.some((i: string) => i.includes("'Acc:info:id'"))).to.be.false;
   });
 
-  it('converts Load output object path and input reference (migration + assessment)', async () => {
+  it('leaves Load output object path and input reference unchanged (migration + assessment)', async () => {
     const items = [
       item('ld1', { DomainObjectAPIName__c: 'Acc:AccountInfo', DomainObjectFieldAPIName__c: 'Name' }),
       item('ld2', { InterfaceFieldAPIName__c: 'src:node:field', DomainObjectFieldAPIName__c: 'Value' }),
     ];
 
-    const migObj = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
-    expect(migObj.OutputObjectName).to.equal('Acc.AccountInfo'); // object path dots out fully
-    expect(migObj.OutputFieldName).to.equal('Name'); // plain field, untouched
-    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
-    expect(migRef.InputFieldName).to.equal('src.node:field'); // reference keeps field-accessor colon
+    // Migration does NOT convert for a non-Extract: colons are preserved verbatim.
+    const migObj = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+    expect(migObj.OutputObjectName).to.equal('Acc:AccountInfo');
+    expect(migObj.OutputFieldName).to.equal('Name'); // plain field, no separator
+    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent', false);
+    expect(migRef.InputFieldName).to.equal('src:node:field');
 
+    // Assessment reports no path-conversion infos for a Load.
     const map = new Map();
     map.set('CustomTypeDM', items);
     const res = await (dataRaptorTool as any).processDataMappers(bundle('Load'), new Set<string>(), map, []);
     expect(res.type).to.equal('Load');
     expect(res.migrationStatus).to.equal('Ready for migration');
     expect(res.warnings).to.be.empty;
-    expect(res.infos.some((i: string) => i.includes("'Acc:AccountInfo'") && i.includes("'Acc.AccountInfo'"))).to.be
-      .true;
-    expect(res.infos.some((i: string) => i.includes("'src:node:field'") && i.includes("'src.node:field'"))).to.be.true;
+    expect(res.infos.some((i: string) => i.includes("'Acc:AccountInfo'"))).to.be.false;
+    expect(res.infos.some((i: string) => i.includes("'src:node:field'"))).to.be.false;
   });
 
   it('reports nothing for colon-free paths regardless of type', async () => {
