@@ -228,12 +228,15 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
         const dataMapperName = transformedDataRaptor[DRBundleMappings.Name];
         duplicatedNames.add(dataMapperName.toLowerCase());
 
-        const items = await this.getItemsForDataRaptor(
-          dataRaptorItemsData,
-          name,
-          drUploadResponse.id,
-          DataRaptorMigrationTool.isExtractDataRaptor(dr[this.getBundleFieldKey('Type__c')])
-        );
+        const items = await this.getItemsForDataRaptor(dataRaptorItemsData, name, drUploadResponse.id);
+        // The managed-package (Package Designer) runtime accepts a colon separator in the Data Mapper
+        // JSON paths (Extract Object path "Acc:test" in OutputFieldName and its mapping reference
+        // "Acc:test:id" in InputFieldName), but the standard (Core Designer) runtime expects a dot. This
+        // alias:node convention only exists on Extract Data Mappers, so convert those and leave
+        // Load/Transform items (whose fields may legitimately contain a colon) untouched.
+        if (DataRaptorMigrationTool.isExtractDataRaptor(dr[this.getBundleFieldKey('Type__c')])) {
+          items.mappedRecords.forEach((mapped) => this.convertObjectPathSeparators(mapped));
+        }
         drUploadResponse.newName = dataMapperName;
 
         // Move the items
@@ -522,8 +525,7 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
   private async getItemsForDataRaptor(
     dataRaptorItems: AnyJson[],
     drName: string,
-    drId: string,
-    isExtract: boolean
+    drId: string
   ): Promise<TransformData> {
     //Query all Elements
     const mappedRecords = [];
@@ -533,7 +535,7 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
       const recordId = drItem['Id'];
       // const itemParentId = drItem[nsPrefix + 'OmniDataTransformationId__c']
       if (drItem['Name'] === drName) {
-        mappedRecords.push(this.mapDataRaptorItemData(drItem, drId, isExtract));
+        mappedRecords.push(this.mapDataRaptorItemData(drItem, drId));
       }
 
       // Create a map of the original records
@@ -598,13 +600,14 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
   }
 
   /**
-   * Maps an individual DRMapItem__c into an OmniDataTransformId record
+   * Maps an individual DRMapItem__c into an OmniDataTransformId record.
+   * Colon->dot object-path conversion is applied by the caller (only for Extract Data Mappers),
+   * so this method stays a pure field mapper regardless of the parent Data Mapper's type.
    * @param dataRaptorItemRecord
    * @param omniDataTransformationId
-   * @param isExtract Whether the parent Data Mapper is an Extract; only Extracts get colon->dot path conversion.
    * @returns
    */
-  private mapDataRaptorItemData(dataRaptorItemRecord: AnyJson, omniDataTransformationId: string, isExtract: boolean) {
+  private mapDataRaptorItemData(dataRaptorItemRecord: AnyJson, omniDataTransformationId: string) {
     // Transformed object
     let mappedObject = {};
 
@@ -627,17 +630,6 @@ export class DataRaptorMigrationTool extends BaseMigrationTool implements Migrat
     // Set the parent/child relationship
     mappedObject['OmniDataTransformationId'] = omniDataTransformationId;
     mappedObject['Name'] = this.cleanName(mappedObject['Name']);
-
-    // The managed-package (Package Designer) runtime accepts a colon separator in the Data Mapper
-    // JSON paths (Extract Object path "Acc:test" in OutputFieldName and its mapping reference
-    // "Acc:test:id" in InputFieldName), but the standard (Core Designer) runtime expects a dot. Node
-    // definitions convert every colon ("Acc:test" -> "Acc.test"); references keep the trailing
-    // field-accessor colon ("Acc:test:id" -> "Acc.test:id"). Convert so the node definition and every
-    // reference to it stay in sync on the standard runtime. This alias:node convention only exists on
-    // Extract Data Mappers, so Load/Transform items are left untouched.
-    if (isExtract) {
-      this.convertObjectPathSeparators(mappedObject);
-    }
 
     // BATCH framework requires that each record has an "attributes" property
     mappedObject['attributes'] = {

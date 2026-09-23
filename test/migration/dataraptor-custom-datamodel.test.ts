@@ -83,7 +83,7 @@ describe('DataRaptor Custom Data Model - colon->dot object-path conversion', () 
     const items = [item('tf1', { InterfaceFieldAPIName__c: 'In:acct:name', DomainObjectFieldAPIName__c: 'Out:acct' })];
 
     // Migration does NOT convert for a non-Extract: colons are preserved verbatim.
-    const mig = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+    const mig = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
     expect(mig.InputFieldName).to.equal('In:acct:name');
     expect(mig.OutputFieldName).to.equal('Out:acct');
 
@@ -105,10 +105,10 @@ describe('DataRaptor Custom Data Model - colon->dot object-path conversion', () 
     ];
 
     // "Turbo Extract" is its own distinct Type, NOT an Extract, so the conversion does not run.
-    const migNode = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+    const migNode = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
     expect(migNode.InputObjectName).to.equal('Case');
     expect(migNode.OutputFieldName).to.equal('Acc:info'); // colon preserved verbatim
-    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent', false);
+    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
     expect(migRef.InputFieldName).to.equal('Acc:info:id'); // colon preserved verbatim
 
     const map = new Map();
@@ -127,10 +127,10 @@ describe('DataRaptor Custom Data Model - colon->dot object-path conversion', () 
     ];
 
     // Migration does NOT convert for a non-Extract: colons are preserved verbatim.
-    const migObj = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent', false);
+    const migObj = (dataRaptorTool as any).mapDataRaptorItemData(items[0], 'parent');
     expect(migObj.OutputObjectName).to.equal('Acc:AccountInfo');
     expect(migObj.OutputFieldName).to.equal('Name'); // plain field, no separator
-    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent', false);
+    const migRef = (dataRaptorTool as any).mapDataRaptorItemData(items[1], 'parent');
     expect(migRef.InputFieldName).to.equal('src:node:field');
 
     // Assessment reports no path-conversion infos for a Load.
